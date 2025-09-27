@@ -1,0 +1,30 @@
+# Django
+*.pyc
+__pycache__/
+db.sqlite3
+*.log
+venv/
+env/
+.env
+
+# Flutter
+flutter-app/.dart_tool/
+flutter-app/.packages
+flutter-app/build/
+flutter-app/.flutter-plugins
+flutter-app/.flutter-plugins-dependencies
+flutter-app/*.iml
+flutter-app/.idea/
+flutter-app/android/.gradle/
+flutter-app/android/local.properties
+flutter-app/ios/Pods/
+flutter-app/ios/.symlinks/
+flutter-app/ios/Flutter/flutter_export_environment.sh
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
