@@ -1,6 +1,8 @@
 from django.apps import AppConfig
 import socket
 import logging
+import signal
+import atexit
 from zeroconf import ServiceInfo, Zeroconf
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,7 @@ class ApiConfig(AppConfig):
         # Avoid double registration in development by checking if already registered
         if not hasattr(self, 'zeroconf'):
             self.register_service()
+            self.setup_cleanup_handlers()
 
     def register_service(self):
         try:
@@ -65,3 +68,34 @@ class ApiConfig(AppConfig):
             print(f"❌ Failed to register mDNS service: {e}")
             print(f"   Error type: {type(e).__name__}")
             print(f"   Traceback:\n{traceback.format_exc()}")
+
+    def unregister_service(self):
+        """Unregister the mDNS service and clean up"""
+        if hasattr(self, 'zeroconf') and self.zeroconf:
+            try:
+                if hasattr(self, 'service_info'):
+                    print("🔄 Unregistering mDNS service...")
+                    self.zeroconf.unregister_service(self.service_info)
+                    print("✅ mDNS service unregistered")
+
+                self.zeroconf.close()
+                print("✅ Zeroconf closed")
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}")
+                print(f"⚠️ Error during cleanup: {e}")
+
+    def setup_cleanup_handlers(self):
+        """Setup handlers to clean up on shutdown"""
+        # Register cleanup with atexit
+        atexit.register(self.unregister_service)
+
+        # Handle SIGTERM and SIGINT signals
+        def signal_handler(signum, frame):
+            print(f"\n📡 Received signal {signum}, cleaning up...")
+            self.unregister_service()
+            # Exit gracefully
+            import sys
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
