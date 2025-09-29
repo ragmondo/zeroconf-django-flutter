@@ -20,6 +20,14 @@ flutter-app/android/local.properties
 flutter-app/ios/Pods/
 flutter-app/ios/.symlinks/
 flutter-app/ios/Flutter/flutter_export_environment.sh
+flutter-app/ios/Flutter/Generated.xcconfig
+flutter-app/ios/Runner/GeneratedPluginRegistrant.*
+flutter-app/android/app/src/main/java/io/flutter/plugins/
+flutter-app/macos/Flutter/GeneratedPluginRegistrant.swift
+flutter-app/macos/Flutter/ephemeral/
+flutter-app/.metadata
+flutter-app/pubspec.lock
+flutter-app/macos/Podfile.lock
 
 # IDEs
 .vscode/
