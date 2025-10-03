@@ -3,9 +3,7 @@ import 'package:bonsoir/bonsoir.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -13,28 +11,23 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'mDNS Discovery Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
-      home: const ServiceDiscoveryPage(),
+      title: 'mDNS Discovery',
+      home: const DiscoveryPage(),
     );
   }
 }
 
-class ServiceDiscoveryPage extends StatefulWidget {
-  const ServiceDiscoveryPage({super.key});
+class DiscoveryPage extends StatefulWidget {
+  const DiscoveryPage({super.key});
 
   @override
-  State<ServiceDiscoveryPage> createState() => _ServiceDiscoveryPageState();
+  State<DiscoveryPage> createState() => _DiscoveryPageState();
 }
 
-class _ServiceDiscoveryPageState extends State<ServiceDiscoveryPage> {
+class _DiscoveryPageState extends State<DiscoveryPage> {
   BonsoirDiscovery? discovery;
-  final List<ResolvedBonsoirService> discoveredServices = [];
-  String? serverResponse;
-  bool isDiscovering = false;
+  final List<ResolvedBonsoirService> services = [];
+  String? response;
 
   @override
   void dispose() {
@@ -43,205 +36,81 @@ class _ServiceDiscoveryPageState extends State<ServiceDiscoveryPage> {
   }
 
   Future<void> startDiscovery() async {
-    print('=== STARTING DISCOVERY ===');
-
-    // Try both service types
-    final serviceType = '_django-api._tcp';
-    print('Looking for service type: $serviceType');
-
     setState(() {
-      discoveredServices.clear();
-      isDiscovering = true;
-      serverResponse = null;
+      services.clear();
+      response = null;
     });
 
-    discovery = BonsoirDiscovery(type: serviceType);
-    print('Discovery instance created for type: $serviceType');
-
-    // Wait for the discovery to be ready
-    print('Waiting for discovery to be ready...');
+    discovery = BonsoirDiscovery(type: '_django-api._tcp');
     await discovery!.ready;
-    print('Discovery is ready');
 
-    discovery!.eventStream?.listen(
-      (event) {
-        print('=== DISCOVERY EVENT ===');
-        print('Event type: ${event.type}');
-        print('Service: ${event.service}');
-
-        if (event.type == BonsoirDiscoveryEventType.discoveryServiceFound) {
-          print('SERVICE FOUND: ${event.service?.name}');
-          print('Service type: ${event.service?.type}');
-          print('Attempting to resolve...');
-          event.service?.resolve(discovery!.serviceResolver);
-        } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
-          print('SERVICE RESOLVED:');
-          print('  Name: ${event.service?.name}');
-          print('  Type: ${event.service?.type}');
-          print('  Full JSON: ${event.service?.toJson()}');
-
-          if (event.service is ResolvedBonsoirService) {
-            final resolved = event.service as ResolvedBonsoirService;
-            print('  Host: ${resolved.host}');
-            print('  Port: ${resolved.port}');
-            print('  Attributes: ${resolved.attributes}');
-
-            setState(() {
-              if (!discoveredServices.any((s) => s.name == resolved.name)) {
-                discoveredServices.add(resolved);
-                print('Added service to list. Total services: ${discoveredServices.length}');
-              }
-            });
-          }
-        } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceLost) {
-          print('SERVICE LOST: ${event.service?.name}');
+    discovery!.eventStream?.listen((event) {
+      if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
+        if (event.service is ResolvedBonsoirService) {
           setState(() {
-            discoveredServices.removeWhere((s) => s.name == event.service?.name);
+            final resolved = event.service as ResolvedBonsoirService;
+            if (!services.any((s) => s.name == resolved.name)) {
+              services.add(resolved);
+            }
           });
-        } else {
-          print('Unknown event type: ${event.type}');
         }
-      },
-      onError: (error, stackTrace) {
-        print('=== DISCOVERY ERROR ===');
-        print('Error: $error');
-        print('Stack trace: $stackTrace');
-      },
-    );
+      }
+    });
 
-    print('Starting discovery...');
     await discovery!.start();
-    print('Discovery started successfully');
-
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted && isDiscovering) {
-        print('Auto-stopping discovery after 10 seconds...');
-        stopDiscovery();
-      }
-    });
   }
 
-  Future<void> stopDiscovery() async {
-    print('=== STOPPING DISCOVERY ===');
-    await discovery?.stop();
-    setState(() {
-      isDiscovering = false;
-    });
-    print('Discovery stopped');
-  }
-
-  Future<void> testServerConnection(ResolvedBonsoirService service) async {
+  Future<void> testConnection(ResolvedBonsoirService service) async {
     try {
-      final host = service.host;
-      final port = service.port;
+      final url = Uri.parse('http://${service.host}:${service.port}/api/test/');
+      final res = await http.get(url);
 
-      if (host == null || port == null) {
-        setState(() {
-          serverResponse = 'Error: Missing host or port information';
-        });
-        return;
-      }
-
-      final url = Uri.parse('http://$host:$port/api/info/');
-      print('Connecting to: $url');
-
-      final response = await http.get(url).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          final encoder = JsonEncoder.withIndent('  ');
-          serverResponse = 'Server Response:\n${encoder.convert(data)}';
-        });
-      } else {
-        setState(() {
-          serverResponse = 'Error: HTTP ${response.statusCode}';
-        });
-      }
-    } catch (e) {
       setState(() {
-        serverResponse = 'Connection Error: $e';
+        response = res.statusCode == 200
+          ? json.decode(res.body)['message']
+          : 'Error: ${res.statusCode}';
       });
+    } catch (e) {
+      setState(() => response = 'Error: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('mDNS Service Discovery'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: isDiscovering ? null : startDiscovery,
-                  child: const Text('Start Discovery'),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton(
-                  onPressed: isDiscovering ? stopDiscovery : null,
-                  child: const Text('Stop Discovery'),
-                ),
-              ],
+      appBar: AppBar(title: const Text('mDNS Discovery')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: ElevatedButton(
+              onPressed: startDiscovery,
+              child: const Text('Discover Services'),
             ),
-            const SizedBox(height: 16),
-            if (isDiscovering)
-              const LinearProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              'Discovered Services (${discoveredServices.length}):',
-              style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: services.length,
+              itemBuilder: (context, index) {
+                final service = services[index];
+                return ListTile(
+                  title: Text(service.name ?? 'Unknown'),
+                  subtitle: Text('${service.host}:${service.port}'),
+                  trailing: ElevatedButton(
+                    onPressed: () => testConnection(service),
+                    child: const Text('Test'),
+                  ),
+                );
+              },
             ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                itemCount: discoveredServices.length,
-                itemBuilder: (context, index) {
-                  final service = discoveredServices[index];
-                  return Card(
-                    child: ListTile(
-                      title: Text(service.name ?? 'Unknown Service'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Host: ${service.host ?? "Unknown"}'),
-                          Text('Port: ${service.port ?? "Unknown"}'),
-                          if (service.attributes != null)
-                            Text('Attributes: ${service.attributes}'),
-                        ],
-                      ),
-                      trailing: ElevatedButton(
-                        onPressed: () => testServerConnection(service),
-                        child: const Text('Test'),
-                      ),
-                    ),
-                  );
-                },
-              ),
+          ),
+          if (response != null)
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.green[100],
+              child: Text(response!),
             ),
-            if (serverResponse != null) ...[
-              const Divider(),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  serverResponse!,
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-              ),
-            ],
-          ],
-        ),
+        ],
       ),
     );
   }
