@@ -50,7 +50,9 @@ class ApiConfig(AppConfig):
                 addresses=[socket.inet_aton(local_ip)],
                 port=port,
                 properties=properties,
-                server=f'{hostname}.local.'
+                server=f'{hostname}.local.',
+                host_ttl=120,  # 2 minutes for A/AAAA records
+                other_ttl=120  # 2 minutes for SRV/TXT records
             )
 
             self.zeroconf = Zeroconf()
