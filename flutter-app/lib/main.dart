@@ -45,7 +45,10 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     await discovery!.ready;
 
     discovery!.eventStream?.listen((event) {
-      if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
+      if (event.type == BonsoirDiscoveryEventType.discoveryServiceFound) {
+        // When a service is found, resolve it
+        event.service?.resolve(discovery!.serviceResolver);
+      } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceResolved) {
         if (event.service is ResolvedBonsoirService) {
           setState(() {
             final resolved = event.service as ResolvedBonsoirService;
