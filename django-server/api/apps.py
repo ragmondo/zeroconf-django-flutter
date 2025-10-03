@@ -13,11 +13,12 @@ class ApiConfig(AppConfig):
 
     def ready(self):
         import os
-        # Register service regardless of RUN_MAIN for better compatibility
-        # Avoid double registration in development by checking if already registered
-        if not hasattr(self, 'zeroconf'):
-            self.register_service()
-            self.setup_cleanup_handlers()
+        # Only register service in the main Django process (not the reloader process)
+        # The reloader sets RUN_MAIN=true for the actual server process
+        if os.environ.get('RUN_MAIN') == 'true':
+            if not hasattr(self, 'zeroconf'):
+                self.register_service()
+                self.setup_cleanup_handlers()
 
     def register_service(self):
         try:
