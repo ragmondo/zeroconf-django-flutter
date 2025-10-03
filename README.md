@@ -4,178 +4,236 @@ A minimal proof of concept demonstrating mDNS/Bonjour service discovery between 
 
 ## Architecture
 
-- **Django Server**: Advertises itself using Zeroconf (python-zeroconf library)
+- **Django Server**: Advertises itself using Zeroconf (python-zeroconf library) with TTL management and proper cleanup
 - **Flutter iOS/macOS App**: Discovers the Django server using Bonsoir package (native Bonjour/mDNS)
 
-## Library Versions (Proven Working)
+## Features
+
+- Automatic mDNS service registration with customizable TTL values
+- Proper service cleanup on shutdown (goodbye packets)
+- Cross-platform Flutter app (iOS and macOS)
+- Minimal dependencies and clean architecture
+- Ghost service cleanup utilities
+
+## Requirements
 
 ### Django Server
+- Python 3.8+
 - Django==5.0.6
-- zeroconf==0.147.2 (latest as of 2025)
-- djangorestframework==3.15.2
+- zeroconf==0.147.2
 
-### Flutter iOS/macOS App
+### Flutter App
 - Flutter SDK: >=3.0.0 <4.0.0
 - bonsoir: ^5.1.11 (cross-platform mDNS, uses native iOS Bonjour)
 - http: ^1.2.0
+- iOS 13.0+ (required by bonsoir_darwin)
 
-## Setup Instructions
+## Quick Start
 
-### Django Server Setup
+### 1. Django Server
 
-1. Navigate to the Django server directory:
 ```bash
-cd mdns-poc/django-server
-```
-
-2. Create a Python virtual environment:
-```bash
+cd django-server
 python3 -m venv venv
 source venv/bin/activate  # On macOS/Linux
-```
-
-3. Install dependencies:
-```bash
 pip install -r requirements.txt
-```
-
-4. Run migrations:
-```bash
 python manage.py migrate
-```
-
-5. Start the Django server:
-```bash
 python manage.py runserver 0.0.0.0:8000
 ```
 
 You should see:
 ```
-✅ mDNS service registered: Django API Server on [your-hostname] on [IP]:8000
+✅ mDNS service registered: Django API Server on [IP]:8000
    Service type: _django-api._tcp.local.
 ```
 
-### Flutter iOS/macOS App Setup
+### 2. Flutter App
 
-1. Navigate to the Flutter app directory:
 ```bash
-cd mdns-poc/flutter-app
-```
-
-2. Install Flutter dependencies:
-```bash
+cd flutter-app
 flutter pub get
-```
 
-3. Platform-specific setup:
+# For iOS Simulator
+flutter run -d "iPhone"
 
-**For iOS:**
-- Ensure you have Xcode installed and configured
-- Run on iOS simulator or device:
-```bash
-flutter run -d ios
-```
+# For physical iOS device
+flutter run -d "Your Device Name"
 
-**For macOS:**
-- Ensure you have Xcode installed
-- Run on macOS:
-```bash
+# For macOS
 flutter run -d macos
-```
-
-To list available devices:
-```bash
-flutter devices
 ```
 
 ## How It Works
 
-### Django Server
+### Service Discovery Flow
 
-The Django server automatically registers an mDNS service when it starts:
+1. Django server starts and automatically registers mDNS service with 120-second TTL
+2. Service advertises on `_django-api._tcp.local.` with properties
+3. Flutter app discovers services when "Start Discovery" is tapped
+4. App resolves service details and displays host:port
+5. "Test" button sends HTTP request to verify connectivity
 
-- **Service Type**: `_django-api._tcp.local.`
-- **Port**: 8000
-- **Properties**: Includes API version, endpoints, and description
-- **Registration**: Happens automatically in `api/apps.py` when Django starts
+### API Endpoints
 
-API Endpoints:
-- `/api/info/` - Server information
-- `/api/health/` - Health check
-- `/api/echo/` - Echo test endpoint
+- `GET /api/` - Returns server information and current time
 
-### Flutter iOS/macOS App
+### mDNS TTL Configuration
 
-The app uses Bonsoir package which leverages native Bonjour framework on both iOS and macOS:
+The Django server sets explicit TTL values:
+- **Host TTL**: 120 seconds (A/AAAA records)
+- **Other TTL**: 120 seconds (SRV/TXT records)
 
-1. Tap "Start Discovery" to begin scanning for `_django-api._tcp` services
-2. Discovered services appear in the list with host and port information
-3. Tap "Test" to make an HTTP request to the discovered server
-4. Server response is displayed below
+Services expire automatically if not refreshed within the TTL period.
 
-### Platform-Specific Configuration
+## Platform Configuration
 
-**iOS** (`ios/Runner/Info.plist`):
-- **NSBonjourServices**: Declares the service types the app will browse
-- **NSLocalNetworkUsageDescription**: User-facing description for local network access
+### iOS Requirements
 
-**macOS** (`macos/Runner/Info.plist` and entitlements files):
-- **NSBonjourServices**: Declares the service types the app will browse
-- **NSLocalNetworkUsageDescription**: User-facing description for local network access
-- **com.apple.security.network.client**: Network client entitlement for sandboxed macOS apps
+**Info.plist** (`ios/Runner/Info.plist`):
+```xml
+<key>NSBonjourServices</key>
+<array>
+    <string>_django-api._tcp</string>
+</array>
+<key>NSLocalNetworkUsageDescription</key>
+<string>This app needs local network access to discover Django servers</string>
+```
 
-## Testing on iOS/macOS
+**Minimum iOS Version**: 13.0 (set in `ios/Podfile`)
 
-### iOS Simulator
-The iOS simulator should work immediately if the Django server is running on the same machine.
+**Code Signing**: Automatic signing enabled in Xcode project
 
-### macOS
-The macOS app should discover the Django server running on the same machine or on the same network immediately.
+### macOS Requirements
 
-### Physical iOS Device
-For testing on a physical iOS device:
-1. Ensure both the Django server machine and iOS device are on the same WiFi network
-2. The Django server must be accessible from the network (firewall configured)
-3. Run Django with `0.0.0.0:8000` to bind to all network interfaces
+**Entitlements** (`macos/Runner/*.entitlements`):
+```xml
+<key>com.apple.security.network.client</key>
+<true/>
+```
+
+Plus same Info.plist entries as iOS.
+
+## Utilities
+
+### Clean Ghost Services
+
+If you see lingering "ghost" services after server shutdown:
+
+```bash
+cd django-server
+source venv/bin/activate
+python cleanup_mdns.py
+```
+
+This sends goodbye packets for all Django API Server instances.
+
+### Test TTL Behavior
+
+```bash
+cd django-server
+source venv/bin/activate
+python test_ttl.py
+```
+
+Creates a test service with 30-second TTL to verify expiration.
 
 ## Troubleshooting
 
-### Server Not Discovered
-- Verify both devices are on the same network
-- Check firewall settings allow mDNS (port 5353) and HTTP (port 8000)
-- On macOS, ensure the Django server shows in the Network browser
-- Restart the discovery after a few seconds if needed
+### iOS Build Issues
 
-### Connection Failed After Discovery
-- Verify the Django server is running on `0.0.0.0:8000` not `127.0.0.1:8000`
-- Check the discovered IP address is correct
-- Test direct HTTP connection: `curl http://[IP]:8000/api/info/`
+**Provisioning Profile Error**:
+```bash
+# Add automatic provisioning to Xcode project
+open flutter-app/ios/Runner.xcworkspace
+# Select team in Signing & Capabilities
+```
 
-## Technical Notes
+**Minimum iOS Version Error**:
+- Already fixed: Podfile sets `platform :ios, '13.0'`
 
-### Why These Libraries?
+### Service Discovery Issues
 
-**python-zeroconf (0.147.2)**:
-- Pure Python implementation, no external dependencies
-- Actively maintained (latest update Sept 2025)
-- Compatible with Apple Bonjour and Avahi
+**Services Not Found**:
+1. Verify same network: `ping [server-ip]`
+2. Check mDNS: `dns-sd -B _django-api._tcp`
+3. Verify firewall allows port 5353 (mDNS) and 8000 (HTTP)
 
-**Bonsoir Flutter Package**:
-- Uses native platform APIs (Bonjour on iOS and macOS)
-- Better reliability than pure Dart implementations
-- Handles iOS 14+ local network privacy requirements
-- Works seamlessly on macOS with proper entitlements
-- Active maintenance and good documentation
+**Ghost Services**:
+- Run `cleanup_mdns.py` to send goodbye packets
+- Services expire after 2 minutes (120s TTL)
 
-### mDNS Service Type
+**Multiple Service Instances**:
+- Kill all Django processes: `pkill -f "manage.py runserver"`
+- Run cleanup script to remove registrations
 
-Using `_django-api._tcp` as the service type:
-- Follows mDNS naming conventions
-- Unique enough to avoid conflicts
-- TCP indicates HTTP REST API service
+### Network Issues
+
+**Django Must Bind to All Interfaces**:
+```bash
+# Correct - accessible from network
+python manage.py runserver 0.0.0.0:8000
+
+# Wrong - only localhost
+python manage.py runserver  # defaults to 127.0.0.1
+```
+
+## Technical Details
+
+### Service Cleanup
+
+The Django server implements proper cleanup:
+- Signal handlers for SIGTERM and SIGINT
+- atexit registration for cleanup
+- Sends goodbye packets (TTL=0) on shutdown
+
+### IP Detection
+
+Server detects actual network IP (not localhost):
+```python
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.connect(('8.8.8.8', 80))
+local_ip = s.getsockname()[0]
+```
+
+### Service Resolution
+
+Flutter app performs two-step discovery:
+1. Find service via browse
+2. Resolve details before use
+
+## Files Structure
+
+```
+mdns-poc/
+├── django-server/
+│   ├── api/
+│   │   ├── apps.py          # mDNS registration with TTL
+│   │   └── views.py         # Minimal API endpoint
+│   ├── cleanup_mdns.py      # Ghost service cleanup
+│   ├── test_ttl.py          # TTL testing utility
+│   └── requirements.txt
+├── flutter-app/
+│   ├── lib/
+│   │   └── main.dart        # Minimal discovery UI
+│   ├── ios/
+│   │   ├── Runner/Info.plist
+│   │   └── Podfile          # iOS 13.0 minimum
+│   └── pubspec.yaml
+└── README.md
+```
+
+## Recent Updates
+
+- Added explicit TTL configuration (120 seconds)
+- Implemented proper service cleanup with goodbye packets
+- Added cleanup utilities for ghost services
+- Fixed iOS automatic code signing
+- Set minimum iOS version to 13.0 for bonsoir compatibility
+- Minimized codebase (~54% reduction)
 
 ## References
 
 - [python-zeroconf documentation](https://python-zeroconf.readthedocs.io/)
 - [Bonsoir package](https://pub.dev/packages/bonsoir)
 - [Apple Bonjour Overview](https://developer.apple.com/bonjour/)
+- [mDNS RFC 6762](https://tools.ietf.org/html/rfc6762)
