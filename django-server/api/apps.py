@@ -45,13 +45,15 @@ class ApiConfig(AppConfig):
                 'description': 'POC Django Server with mDNS'
             }
 
+            server_host = f'{hostname}'
+
             info = ServiceInfo(
                 service_type,
                 full_service_name,
                 addresses=[socket.inet_aton(local_ip)],
                 port=port,
                 properties=properties,
-                server=f'{hostname}.local.',
+                server=server_host,
                 host_ttl=120,  # 2 minutes for A/AAAA records
                 other_ttl=120  # 2 minutes for SRV/TXT records
             )
@@ -61,9 +63,9 @@ class ApiConfig(AppConfig):
             self.zeroconf.register_service(info, allow_name_change=True)
             self.service_info = info
 
-            logger.info(f"mDNS service registered: {service_name} on {local_ip}:{port}")
+            logger.info(f"mDNS service registered: {service_name} on {local_ip}:{port} using hostname {server_host}")
             print(f"✅ mDNS service registered: {service_name} on {local_ip}:{port}")
-            print(f"   Service type: {service_type}")
+            print(f"   Service type: {service_type} on {server_host}")
 
         except Exception as e:
             import traceback
